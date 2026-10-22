@@ -90,6 +90,7 @@ export function AboutPage() {
 
             <section aria-labelledby="pendidikan">
               <SectionHeading
+                headingId="pendidikan"
                 eyebrow="Pendidikan"
                 title="Riwayat pendidikan"
                 description="Hanya entri yang ditandai tampil oleh admin yang muncul di sini."
@@ -114,6 +115,7 @@ export function AboutPage() {
 
             <section aria-labelledby="pengalaman-singkat">
               <SectionHeading
+                headingId="pengalaman-singkat"
                 eyebrow="Pengalaman"
                 title="Yang sedang dan pernah saya kerjakan"
                 action={

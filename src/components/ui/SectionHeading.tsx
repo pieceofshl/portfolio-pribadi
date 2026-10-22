@@ -6,6 +6,8 @@ type SectionHeadingProps = {
   title: string
   description?: string
   action?: ReactNode
+  /** Dipakai sebagai target `aria-labelledby` pada `<section>` pembungkus. */
+  headingId?: string
   className?: string
 }
 
@@ -15,6 +17,7 @@ export function SectionHeading({
   title,
   description,
   action,
+  headingId,
   className,
 }: SectionHeadingProps) {
   return (
@@ -26,7 +29,10 @@ export function SectionHeading({
     >
       <div className="max-w-2xl">
         {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
-        <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl lg:text-4xl">
+        <h2
+          id={headingId}
+          className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl lg:text-4xl"
+        >
           {title}
         </h2>
         {description ? (

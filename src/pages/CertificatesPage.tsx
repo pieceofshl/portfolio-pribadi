@@ -22,6 +22,8 @@ export function CertificatesPage() {
       </PageHeader>
 
       <Container className="py-12 sm:py-16">
+        {/* Heading level 2 menjaga urutan h1 → h2 → h3 tanpa mengubah tampilan. */}
+        <h2 className="sr-only">Daftar sertifikat</h2>
         {publishedCertificates.length > 0 ? (
           <>
             <div className="grid gap-5 sm:grid-cols-2">

@@ -6,8 +6,10 @@
 | Acuan produk | `PRD.md` versi 0.1 |
 | Cakupan kode | 44 file TypeScript/TSX di `src/` (±3.251 baris) |
 | Status proyek | Tahap 1 — Kerangka frontend, data dummy, tanpa Supabase |
-| Jenis laporan | Audit baca-saja (tidak ada perbaikan kode) |
-| Kesimpulan singkat | Fondasi tipe, routing, dan isolasi draft sehat. Tidak ada bug kritis pada kondisi sekarang. Satu risiko tinggi (area admin terbuka) wajib ditutup sebelum integrasi Supabase |
+| Jenis laporan | Audit baca-saja + revisi status implementasi (auditor tidak mengubah kode aplikasi) |
+| Versi laporan | Revisi 1 — 22 Oktober 2026 |
+| Kesimpulan singkat | Fondasi tipe, routing, dan isolasi draft sehat. Tidak ada bug kritis pada kondisi sekarang. Tiga temuan aksesibilitas (A-01, A-02, A-04) sudah diperbaiki dan terverifikasi lewat kode/markup, tetapi **belum diuji di browser**. Satu risiko tinggi (area admin terbuka, A-03) tetap terbuka dan wajib ditutup sebelum integrasi Supabase |
+| Status implementasi | A-01, A-02, A-04: diperbaiki (verifikasi markup, bukan uji browser). A-03: terbuka. A-05: belum selesai (perubahan perbaikan belum di-commit) |
 
 > **Ruang lingkup:** Supabase, login, CRUD, upload, dan RLS **tidak** dianggap sudah diterapkan, sesuai README dan kode. Temuan di bawah hanya menilai apa yang benar-benar ada di repository.
 
@@ -15,7 +17,9 @@
 
 ## 0. Metode, Perintah, dan Batasan
 
-### 0.1 Pemeriksaan yang dijalankan (masing-masing sekali)
+### 0.1 Pemeriksaan yang dijalankan saat audit awal (masing-masing sekali)
+
+> Angka pada tabel ini adalah kondisi **audit awal**. Hasil pemeriksaan ulang setelah perbaikan ada di bagian **0.4**.
 
 | Perintah | Hasil |
 |---|---|
@@ -45,13 +49,70 @@
 
 **Tidak ada temuan berkategori kritis yang dapat direproduksi pada kondisi data dummy sekarang.**
 
+> Tabel prioritas di atas menggambarkan kondisi saat audit awal. Status terkini per temuan (termasuk yang sudah diperbaiki) ada di bagian **0.4**.
+
+---
+
+### 0.4 Pembaruan Pasca-Perbaikan — 22 Oktober 2026
+
+Bagian ini mencatat perbaikan yang diterapkan pada source code **setelah** audit awal. Laporan awal tidak dihapus: setiap temuan di bagian A tetap memuat bukti aslinya dan mendapat blok **Status** dan **Perbaikan**.
+
+#### 0.4.1 Perubahan kode yang diperiksa
+
+| ID | Perubahan | Lokasi |
+|---|---|---|
+| A-01 | `SectionHeading` menerima prop `headingId` dan meneruskannya ke `<h2 id={headingId}>`; halaman Tentang mengisi `headingId="pendidikan"` dan `headingId="pengalaman-singkat"` | `src/components/ui/SectionHeading.tsx` baris 9–11, 20, 32–35; `src/pages/AboutPage.tsx` baris 93, 118 |
+| A-02 | Heading tingkat 2 `sr-only` ditambahkan sebelum grid kartu (kartu tetap `h3`) | `src/pages/PortfolioPage.tsx` baris 135–136; `src/pages/CertificatesPage.tsx` baris 25–26 |
+| A-04 | Skip link "Lewati ke konten admin" + `<main id="konten-admin" tabIndex={-1}>`; halaman login dibungkus landmark `<main>` | `src/layouts/AdminLayout.tsx` baris 57–63, 135; `src/pages/admin/AdminLoginPage.tsx` baris 25 |
+
+Bukti tingkat markup: setiap nilai `aria-labelledby` di `src/` kini memiliki elemen `id` pasangannya (termasuk `pendidikan` dan `pengalaman-singkat`); urutan heading `/portofolio` dan `/sertifikat` kini h1 → h2 → h3; `/admin` memuat anchor `#konten-admin` dengan target `<main id="konten-admin" tabindex="-1">`; `/admin/login` memiliki satu landmark `<main>`.
+
+#### 0.4.2 Pemeriksaan terbaru (22 Oktober 2026)
+
+| Perintah / pemeriksaan | Hasil |
+|---|---|
+| `npm run lint` (oxlint) | 0 error / 0 warning; 45 file; 116 rule; 8 thread |
+| `npm run build` (`tsc -b && vite build`) | Sukses, exit 0, tanpa error TypeScript; 65 modul; JS 334,10 kB (97,73 kB gzip); CSS 48,62 kB (8,35 kB gzip) |
+| Pemeriksaan markup statis | Perbaikan A-01, A-02, dan A-04 terlihat diterapkan (rincian di 0.4.1) |
+
+#### 0.4.3 Batas verifikasi — kode/markup vs browser manual
+
+**Sudah diverifikasi (kode dan markup):**
+
+- tidak ada `aria-labelledby` menggantung pada halaman Tentang maupun halaman lain;
+- heading `<h2>` ada sebelum kartu `<h3>` di Portofolio dan Sertifikat;
+- skip link, `id` target, dan `tabIndex` ada di markup area admin;
+- lint bersih dan build berhasil.
+
+**Belum diverifikasi — wajib uji browser manual:**
+
+- apakah fokus keyboard benar-benar berpindah ke `#konten-admin` setelah skip link diaktifkan (perilaku anchor + `tabIndex={-1}` berbeda antar browser);
+- apakah skip link hanya terlihat saat fokus dan urutan Tab di layout admin masuk akal;
+- pengumuman nama section dan heading `sr-only` oleh pembaca layar (NVDA/VoiceOver);
+- uji visual/responsif 360/768/1280 px, kontras, dan zoom.
+
+Karena itu A-01, A-02, dan A-04 berstatus **"Diperbaiki — verifikasi markup"**, bukan "lulus uji aksesibilitas". Laporan ini **tidak** menyatakan perilaku fokus keyboard sudah lulus; itu menunggu pengujian manual.
+
+#### 0.4.4 Status implementasi per 22 Oktober 2026
+
+| ID | Prioritas | Status | Dasar |
+|---|---|---|---|
+| A-01 | Sedang | **Diperbaiki** (verifikasi markup) | `headingId` diteruskan ke `<h2 id>`; `id` pasangan kini ada |
+| A-02 | Rendah | **Diperbaiki** (verifikasi markup) | `<h2 className="sr-only">` sebelum grid kartu di kedua halaman |
+| A-03 | Tinggi | **Terbuka** (belum diperbaiki) | Tidak ada guard/autentikasi pada route `/admin` |
+| A-04 | Rendah | **Diperbaiki** (verifikasi markup) | Skip link + `<main id="konten-admin" tabIndex={-1}>`; landmark `<main>` pada halaman login |
+| A-05 | Sedang (proses) | **Belum selesai** | Commit fondasi sudah ada, tetapi 6 file perubahan perbaikan masih belum di-commit |
+
+> A-03 dan A-05 sengaja dipertahankan sebagai temuan. A-03 belum tersentuh sama sekali; A-05 belum tuntas karena perbaikan terbaru masih berada di working tree (lihat rincian di A-05).
+
 ---
 
 ## A. Bug yang berhasil direproduksi
 
 ### A-01 — Sedang — Dua section di `/tentang` menunjuk `aria-labelledby` yang tidak ada
 
-- **File/lokasi:** `src/pages/AboutPage.tsx` baris 91 (`aria-labelledby="pendidikan"`) dan baris 115 (`aria-labelledby="pengalaman-singkat"`); `src/components/ui/SectionHeading.tsx` hanya merender `<h2>` tanpa `id`.
+- **Status:** **Diperbaiki (verifikasi kode/markup) — 22 Oktober 2026.** Uji browser/pembaca layar belum dilakukan.
+- **File/lokasi (nomor baris saat audit awal):** `src/pages/AboutPage.tsx` baris 91 (`aria-labelledby="pendidikan"`) dan baris 115 (`aria-labelledby="pengalaman-singkat"`); `src/components/ui/SectionHeading.tsx` hanya merender `<h2>` tanpa `id`.
 - **Gejala:** section Pendidikan dan Pengalaman tidak memiliki nama aksesibel. Pembaca layar mengumumkan region/section tanpa judul sehingga navigasi landmark tidak informatif.
 - **Bukti:** hasil render `/tentang` → `dangling: ["pendidikan", "pengalaman-singkat"]`. `grep` menunjukkan satu-satunya `id` yang cocok adalah `id="keahlian"` (baris 76). Section lain (`ContactPage`, `AdminProfilePage`, `AdminDashboardPage`) tidak bermasalah.
 - **Langkah reproduksi:**
@@ -60,10 +121,12 @@
   3. Periksa nilai `pendidikan` dan `pengalaman-singkat` — tidak ada elemen dengan `id` tersebut.
   4. Alternatif: buka Accessibility pane; nama section kosong.
 - **Rekomendasi:** tambahkan prop `headingId` pada `SectionHeading` (`<h2 id={headingId}>`) dan isi `headingId="pendidikan"` / `"pengalaman-singkat"`, atau ganti dengan `aria-label` yang eksplisit.
+- **Perbaikan (22 Oktober 2026):** rekomendasi pertama diterapkan. `SectionHeading` kini punya prop opsional `headingId` yang dirender sebagai `<h2 id={headingId}>` (`src/components/ui/SectionHeading.tsx` baris 9–11, 20, 32–35), dan `AboutPage` mengisi `headingId="pendidikan"` (baris 93) serta `headingId="pengalaman-singkat"` (baris 118). Pemeriksaan markup: kedua `aria-labelledby` kini menunjuk elemen nyata, dan tidak ditemukan `aria-labelledby` menggantung lain di `src/`. Apakah nama section benar-benar diumumkan pembaca layar **belum diuji**.
 
 ### A-02 — Rendah — Hierarki heading melompat h1 → h3 di `/portofolio` dan `/sertifikat`
 
-- **File/lokasi:** `src/pages/PortfolioPage.tsx` (grid hasil, sekitar baris 133–139) memakai `ProjectCard` yang merender `<h3>` (`src/components/ProjectCard.tsx`); `src/pages/CertificatesPage.tsx` baris 26–31 memakai `CertificateCard` (`<h3>`, `src/components/CertificateCard.tsx`). Kedua halaman tidak punya `<h2>`.
+- **Status:** **Diperbaiki (verifikasi kode/markup) — 22 Oktober 2026.** Uji browser/pembaca layar belum dilakukan.
+- **File/lokasi (nomor baris saat audit awal):** `src/pages/PortfolioPage.tsx` (grid hasil, sekitar baris 133–139) memakai `ProjectCard` yang merender `<h3>` (`src/components/ProjectCard.tsx`); `src/pages/CertificatesPage.tsx` baris 26–31 memakai `CertificateCard` (`<h3>`, `src/components/CertificateCard.tsx`). Kedua halaman tidak punya `<h2>`.
 - **Gejala:** struktur dokumen tidak logis (AC-NFR-02 "heading tersusun secara logis"); pengguna yang menavigasi per heading melewati satu level.
 - **Bukti:** render `/portofolio` → `h1: Karya yang sudah diterbitkan`, lalu `h3: Kalkulator Kalori Harian`, dst. Render `/sertifikat` → `h1`, lalu `h3`.
 - **Langkah reproduksi:**
@@ -71,9 +134,11 @@
   2. Jalankan heading outline (ekstensi/DevTools) — urutan 1 → 3.
   3. Bandingkan dengan `/` dan `/pengalaman` yang benar (1 → 2 → 3).
 - **Rekomendasi:** tambahkan heading tingkat 2 (terlihat atau `sr-only`) sebelum grid, atau ubah judul kartu menjadi `h2` bila halaman tidak punya heading bagian lain.
+- **Perbaikan (22 Oktober 2026):** `<h2 className="sr-only">Daftar proyek</h2>` ditambahkan sebelum grid hasil (`src/pages/PortfolioPage.tsx` baris 135–136) dan `<h2 className="sr-only">Daftar sertifikat</h2>` sebelum grid kartu (`src/pages/CertificatesPage.tsx` baris 25–26). Urutan heading di kedua halaman kini h1 → h2 → h3 tanpa perubahan tampilan visual. Heading `sr-only` tetap akan dibacakan pembaca layar; pengumumannya **belum diuji manual**.
 
 ### A-03 — Tinggi (menjadi Kritis saat data nyata) — Seluruh area admin terbuka tanpa autentikasi
 
+- **Status:** **Terbuka — belum diperbaiki.** Dipertahankan sebagai temuan prioritas tinggi dan wajib ditutup sebelum data nyata tersambung.
 - **File/lokasi:** `src/App.tsx` baris 43–67 (route `/admin` tanpa guard); `src/layouts/AdminLayout.tsx` (komentar "BELUM ada proteksi login/route guard", sekitar baris 39–50); seluruh `src/pages/admin/*`.
 - **Gejala:** siapa pun yang membuka `/admin`, `/admin/proyek`, `/admin/sertifikat`, `/admin/profil`, `/admin/pendidikan`, `/admin/pengalaman`, `/admin/sosial` langsung melihat dashboard dan **daftar konten draft** (judul/ringkasan proyek draft "Eksperimen Tipografi Ekspresif", sertifikat draft, entri pengalaman yang disembunyikan).
 - **Bukti:** render `App` pada `/admin` menghasilkan dashboard lengkap + sidebar (`hasAdminNav: true`) tanpa redirect/login. `AdminDashboardPage` juga menampilkan jumlah draft. Ini **sesuai dokumentasi** README ("Admin (belum diproteksi)") — bukan regresi, tetapi tetap risiko yang harus ditutup sebelum Supabase.
@@ -85,23 +150,27 @@
 
 ### A-04 — Rendah — Area admin tidak punya skip link; `<main>` admin tanpa `id`
 
-- **File/lokasi:** `src/layouts/AdminLayout.tsx` (elemen `<main className="flex-1 ...">`); bandingkan `src/layouts/PublicLayout.tsx` baris 7–20 yang punya "Lewati ke konten utama".
+- **Status:** **Diperbaiki (verifikasi kode/markup) — 22 Oktober 2026.** Perilaku fokus keyboard belum diuji manual.
+- **File/lokasi (nomor baris saat audit awal):** `src/layouts/AdminLayout.tsx` (elemen `<main className="flex-1 ...">`); bandingkan `src/layouts/PublicLayout.tsx` baris 7–20 yang punya "Lewati ke konten utama".
 - **Gejala:** pengguna keyboard di area admin harus melewati sidebar + 7 menu + top bar setiap kali berpindah halaman (AC-NFR-02).
 - **Bukti:** render `/admin` → `hasSkipLink: false`; render `/` → `true`. `AdminLoginPage` juga tidak punya landmark `<main>` maupun skip link.
 - **Langkah reproduksi:**
   1. Buka `/admin`.
   2. Tekan Tab dari awal halaman — tidak ada tautan lewati.
 - **Rekomendasi:** tambahkan skip link dan `<main id="konten-admin" tabIndex={-1}>`, plus landmark `<main>` pada halaman login.
+- **Perbaikan (22 Oktober 2026):** `AdminLayout` kini merender skip link "Lewati ke konten admin" (`src/layouts/AdminLayout.tsx` baris 57–63) dan `<main id="konten-admin" tabIndex={-1}>` (baris 135); `AdminLoginPage` dibungkus landmark `<main>` (`src/pages/admin/AdminLoginPage.tsx` baris 25). Halaman login tetap tanpa skip link karena tidak ada navigasi sebelum konten — tidak menjadi masalah selama landmark `<main>` sudah ada. **Catatan penting:** belum ada uji browser yang membuktikan fokus benar-benar berpindah ke `#konten-admin`, bahwa skip link hanya tampil saat fokus, atau bahwa urutan Tab di area admin wajar. Statusnya "diperbaiki di markup", bukan "lulus uji keyboard".
 
-### A-05 — Sedang (proses) — Source code belum masuk Git
+### A-05 — Sedang (proses) — Source code belum sepenuhnya masuk Git
 
+- **Status:** **Belum selesai — dipertahankan.** Perubahan perbaikan A-01/A-02/A-04 masih belum di-commit.
 - **File/lokasi:** seluruh repository (`git status --porcelain`).
 - **Gejala:** tidak ada riwayat/rollback untuk pekerjaan Tahap 1. Jika integrasi Supabase merusak sesuatu, tidak ada titik kembali. Bertentangan dengan PRD 10.6 dan Tahap 0 ("repository bersih", source di GitHub).
-- **Bukti:** repo memiliki 1 commit (dokumen), tetapi `git status` menampilkan `?? .gitignore`, `?? src/`, `?? package.json`, dst. — semua file aplikasi untracked.
+- **Bukti (kondisi audit awal):** repo memiliki 1 commit (dokumen), tetapi `git status` menampilkan `?? .gitignore`, `?? src/`, `?? package.json`, dst. — semua file aplikasi untracked.
+- **Pembaruan (22 Oktober 2026):** commit fondasi kini ada — `fa618c3 feat: add portfolio frontend scaffold` memuat 57 file, termasuk seluruh `src/`, `package.json`, `README.md`, dan laporan ini; bukti awal "semua file aplikasi untracked" tidak lagi berlaku. Namun `git status --porcelain` masih menampilkan 6 file termodifikasi yang belum di-commit: `src/components/ui/SectionHeading.tsx`, `src/layouts/AdminLayout.tsx`, `src/pages/AboutPage.tsx`, `src/pages/CertificatesPage.tsx`, `src/pages/PortfolioPage.tsx`, `src/pages/admin/AdminLoginPage.tsx` — tepatnya perubahan perbaikan A-01, A-02, dan A-04. Temuan ini karena itu **tetap berstatus belum selesai** sampai perubahan tersebut masuk commit dan working tree bersih.
 - **Langkah reproduksi:**
   1. `git status --porcelain`
   2. `git log --stat`
-- **Rekomendasi:** tinjau isi lalu commit fondasi Tahap 1 sebelum menyentuh Supabase (tanpa mengubah kode).
+- **Rekomendasi:** tinjau lalu commit perubahan perbaikan yang masih di working tree (tanpa mengubah kode), pastikan `git status` bersih, baru lanjut ke Supabase.
 
 ---
 
@@ -109,9 +178,9 @@
 
 ### B-01 — Sedang — Form login tanpa `onSubmit`; submit native akan memuat ulang SPA
 
-- **File/lokasi:** `src/pages/admin/AdminLoginPage.tsx` baris 51 (`<form className="mt-7 space-y-4" aria-describedby="login-belum-aktif">`) dan baris 69 (`<Button type="submit" ... disabled>`).
+- **File/lokasi:** `src/pages/admin/AdminLoginPage.tsx` baris 52 (`<form className="mt-7 space-y-4" aria-describedby="login-belum-aktif">`) dan baris 70 (`<Button type="submit" ... disabled>`). Nomor baris digeser oleh pembungkus `<main>` pada perbaikan A-04; isi form tidak berubah.
 - **Skenario:** saat field/tombol diaktifkan di Tahap 4, Enter atau klik "Masuk" memicu submit HTML default (method GET, action = URL saat ini) karena tidak ada `onSubmit`/`action`. Halaman SPA ter-reload, state hilang, dan tidak ada panggilan `signInWithPassword`. Catatan: input saat ini belum punya atribut `name`, jadi kredensial belum masuk query string; begitu `name` ditambahkan untuk Supabase, nilai bisa bocor ke URL/riwayat log.
-- **Bukti:** tidak ada `onSubmit`, `action`, atau `method` di file; satu-satunya `type="submit"` ada di baris 69. Tombol `disabled` membuat ini belum dapat dipicu sekarang.
+- **Bukti:** tidak ada `onSubmit`, `action`, atau `method` di file; satu-satunya `type="submit"` ada di baris 70. Tombol `disabled` membuat ini belum dapat dipicu sekarang. Temuan ini **tidak berubah** oleh perbaikan A-04.
 - **Langkah reproduksi (setelah tombol diaktifkan):**
   1. Hapus sementara `disabled` pada tombol.
   2. Isi form, tekan Enter.
@@ -241,7 +310,7 @@
 
 ### B-14 — Rendah — `aria-describedby` pada `<form>` tanpa nama aksesibel
 
-- **File/lokasi:** `src/pages/admin/AdminLoginPage.tsx` baris 51.
+- **File/lokasi:** `src/pages/admin/AdminLoginPage.tsx` baris 52.
 - **Skenario:** `<form>` tanpa `aria-label`/`aria-labelledby` tidak selalu dipetakan ke landmark `form`, sehingga `aria-describedby` (menunjuk `#login-belum-aktif`) mungkin tidak diumumkan — padahal teks itu menjelaskan kenapa form nonaktif.
 - **Bukti:** atribut hanya `className` + `aria-describedby`; tidak ada nama.
 - **Langkah reproduksi:** periksa accessibility tree halaman `/admin/login`.
@@ -263,8 +332,8 @@
 
 | ID | Yang diperiksa | Hasil |
 |---|---|---|
-| C-01 | `npm run build` (tsc strict + Vite) | Sukses, exit 0, tanpa error TypeScript; 65 modul |
-| C-02 | `npm run lint` | 0 error / 0 warning pada 45 file (cakupan rule terbatas — lihat D-09) |
+| C-01 | `npm run build` (tsc strict + Vite) | Sukses, exit 0, tanpa error TypeScript; 65 modul. Dijalankan ulang 22 Oktober 2026 setelah perbaikan: tetap sukses, JS 334,10 kB (97,73 kB gzip), CSS 48,62 kB (8,35 kB gzip) |
+| C-02 | `npm run lint` | 0 error / 0 warning pada 45 file (cakupan rule terbatas — lihat D-09). Dijalankan ulang 22 Oktober 2026: tetap 0 error / 0 warning |
 | C-03 | Disiplin tipe | Tidak ada `any`, `as any`, `@ts-ignore`, `@ts-expect-error`; satu non-null assertion wajar di `main.tsx:6`; `Record<ProjectCategoryId, string>` dan union status menjaga kategori/status saat kompilasi |
 | C-04 | Routing & 404 | `/`, `/tentang`, `/portofolio`, `/portofolio/:slug`, `/sertifikat`, `/pengalaman`, `/kontak`, `/admin*` merender; path tak dikenal → 404 publik dengan navbar/footer dan dua tautan kembali; `/admin/tidak-ada` → 404 admin; `/portofolio/<slug>/extra` → 404; `/admin/login` terpisah dari layout admin |
 | C-05 | Isolasi draft di data publik | Slug draft `eksperimen-tipografi-ekspresif` → "Proyek tidak ditemukan" (1.577 byte, judul draft tidak ada di markup); proyek/sertifikat draft, pengalaman tersembunyi, dan tautan sosial tersembunyi difilter di `mockData.ts` (turunan `published*`/`visible*`) |
@@ -302,20 +371,23 @@
 
 ## E. Rekomendasi urutan tindak lanjut
 
-Prioritas yang disarankan bila perbaikan disetujui:
+Prioritas yang disarankan, diperbarui 22 Oktober 2026:
 
-1. **A-01 + A-02 + A-04** — aksesibilitas, dampak langsung dan biaya rendah.
-2. **A-05** — commit fondasi agar ada titik rollback sebelum integrasi.
-3. **B-01 + B-03 + B-07** — kesiapan menerima data dinamis (submit form, empty state, error boundary/validasi).
-4. **A-03** — syarat wajib sebelum data nyata tersambung (guard route + RLS).
+1. **Uji manual browser untuk A-01, A-02, A-04** — perbaikan sudah ada di kode/markup, tetapi fokus keyboard, skip link, dan pembaca layar belum pernah diuji di browser. Jangan menutup temuan ini sebelum itu.
+2. **A-05** — commit 6 file perubahan yang masih di working tree agar ada titik rollback sebelum integrasi.
+3. **A-03** — syarat wajib sebelum data nyata tersambung (guard route + RLS).
+4. **B-01 + B-03 + B-07** — kesiapan menerima data dinamis (submit form, empty state, error boundary/validasi).
 5. **D-09** — tambahkan tes otomatis untuk filter/pencarian, 404, dan isolasi draft; aktifkan `exhaustive-deps` dan `jsx_a11y` di oxlint.
 6. **D-08** — fallback SPA Vercel sebelum uji deployment.
+
+> Butir 1 hanya menuntaskan **verifikasi**; kode perbaikannya sendiri sudah diterapkan pada 22 Oktober 2026.
 
 ---
 
 ## F. Catatan penutup
 
-- Tidak ada file proyek yang diubah atau dihapus selama audit.
-- Bukti render berasal dari harness in-memory (Vite SSR + `react-dom/server`) yang tidak menyentuh berkas proyek.
-- Semua klaim visual, kontras, animasi, dan pembaca layar masih memerlukan pengujian manual di browser; lihat daftar di bagian 0.2.
+- Audit awal tidak mengubah atau menghapus file proyek. Revisi 1 (22 Oktober 2026) hanya memperbarui laporan ini — tidak ada source code aplikasi yang diubah.
+- Bukti awal berasal dari harness in-memory (Vite SSR + `react-dom/server`) yang tidak menyentuh berkas proyek. Revisi 1 menambahkan pemeriksaan ulang `npm run lint`, `npm run build`, dan pembacaan markup langsung.
+- Perbaikan A-01, A-02, dan A-04 diverifikasi **pada tingkat kode/markup saja**. Semua klaim visual, kontras, animasi, fokus keyboard, dan pembaca layar masih memerlukan pengujian manual di browser; lihat daftar di bagian 0.2 dan 0.4.3.
+- Temuan A-03 (area admin tanpa autentikasi) masih terbuka, dan A-05 (perubahan belum di-commit) masih belum selesai.
 - Temuan pada bagian B **bukan** bug yang sudah terbukti terjadi; statusnya adalah dugaan berbasis kode yang perlu diverifikasi dengan data dinamis atau browser sungguhan.

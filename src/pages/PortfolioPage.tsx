@@ -132,6 +132,8 @@ export function PortfolioPage() {
 
         {/* Hasil */}
         <div className="mt-8">
+          {/* Heading level 2 menjaga urutan h1 → h2 → h3 tanpa mengubah tampilan. */}
+          <h2 className="sr-only">Daftar proyek</h2>
           {filteredProjects.length > 0 ? (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {filteredProjects.map((project, index) => (

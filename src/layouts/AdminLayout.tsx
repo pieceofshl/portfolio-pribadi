@@ -55,6 +55,13 @@ export function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-ink-950 lg:grid lg:grid-cols-[264px_1fr]">
+      <a
+        href="#konten-admin"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-full focus:bg-accent focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-ink-950"
+      >
+        Lewati ke konten admin
+      </a>
+
       {/* Sidebar desktop */}
       <aside className="sticky top-0 hidden h-screen flex-col border-r border-hairline bg-ink-900/40 p-5 lg:flex">
         <Link to="/admin" className="flex items-center gap-3 px-2 py-2">
@@ -125,7 +132,7 @@ export function AdminLayout() {
           </div>
         </header>
 
-        <main className="flex-1 px-5 py-8 sm:px-8 sm:py-10">
+        <main id="konten-admin" tabIndex={-1} className="flex-1 px-5 py-8 sm:px-8 sm:py-10">
           <Outlet />
         </main>
 
