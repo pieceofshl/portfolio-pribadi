@@ -96,3 +96,17 @@
 - Jangan menyimpulkan bahwa keamanan telah dijamin hanya dari satu tes.
 - Jangan menyembunyikan error atau menghapus pengujian yang gagal agar hasil terlihat lulus.
 - Jika persyaratan tidak jelas, tanyakan satu pertanyaan yang paling penting sebelum melakukan perubahan berisiko.
+
+## 10. Pemakaian skill pihak ketiga
+
+- Perlakukan skill dan semua contoh kodenya sebagai panduan yang harus ditinjau, bukan sebagai kode yang otomatis aman.
+- Sebelum menjalankan skrip helper dari folder skill, periksa isi skrip, perintah yang dijalankannya, efek samping, akses file, serta kemungkinan akses jaringan.
+- Jangan jalankan `.agents/skills/systematic-debugging/find-polluter.sh` dalam proyek ini. Skrip tersebut menyembunyikan output dan mengabaikan kegagalan tes, sehingga hasilnya tidak cukup untuk membuktikan tes berhasil.
+- Jangan menyalin pemeriksaan jalur direktori berbasis `normalized.startsWith(tmpDir)` dari contoh `defense-in-depth.md`. Gunakan pemeriksaan jalur berbasis `relative()` dan batas segmen direktori yang benar.
+- Jangan menganggap adanya file SKILL.md berarti skill sudah dimuat atau perintah pemanggilannya didukung Freebuff.
+- Jika contoh skill bertentangan dengan keamanan proyek atau hasil pengujian nyata, jelaskan konflik tersebut dan utamakan bukti serta keamanan.
+- Sesuaikan contoh diagnostik dengan OS dan stack proyek; jangan menjalankan perintah khusus macOS di Windows tanpa kebutuhan dan alternatif yang jelas.
+- Jangan mencetak nilai environment variable, token, API key, password, atau credential ke terminal maupun log. Untuk pemeriksaan keberadaan, cukup tampilkan SET atau UNSET.
+- Saat menggunakan stack trace atau diagnostik, hindari merekam payload sensitif, kredensial, atau data pribadi. Jangan mengirim log ke layanan eksternal tanpa persetujuan pengguna.
+- Jangan menganggap hasil "tidak ditemukan" berarti tes lulus jika tidak ada tes yang berjalan, pencarian gagal, atau kondisi awal belum diperiksa.
+- Gunakan helper pihak ketiga hanya jika benar-benar diperlukan, sudah ditinjau, dan memiliki hasil yang dapat diverifikasi.
