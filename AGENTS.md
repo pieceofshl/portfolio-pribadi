@@ -80,6 +80,9 @@
 - Jangan mengklaim telah menjalankan tes, build, browser, atau perintah jika belum benar-benar dijalankan.
 - Jika tes tidak dapat dijalankan, jelaskan alasannya dan nyatakan verifikasi yang belum dilakukan.
 - Sebutkan file yang berubah, pemeriksaan yang dijalankan, hasilnya, serta risiko atau pekerjaan tersisa.
+- Saat akan menyatakan bug telah diperbaiki, tes/build/lint berhasil, atau perubahan siap di-commit/push, jalankan pemeriksaan baru yang relevan dan periksa hasil lengkap serta exit code-nya.
+- Jika pemeriksaan tidak dapat dijalankan, gagal, atau belum mencakup seluruh kebutuhan, laporkan status sebenarnya dan sebutkan bagian yang belum terverifikasi.
+- Terapkan aturan verifikasi ini pada klaim faktual mengenai kondisi proyek. Aturan ini tidak mengharuskan pemeriksaan kode untuk setiap sapaan atau pembaruan percakapan biasa; tetapi jangan menyatakan keberhasilan teknis tanpa bukti yang sesuai.
 
 ## 8. Git dan checkpoint
 
