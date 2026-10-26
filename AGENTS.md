@@ -113,3 +113,4 @@
 - Saat menggunakan stack trace atau diagnostik, hindari merekam payload sensitif, kredensial, atau data pribadi. Jangan mengirim log ke layanan eksternal tanpa persetujuan pengguna.
 - Jangan menganggap hasil "tidak ditemukan" berarti tes lulus jika tidak ada tes yang berjalan, pencarian gagal, atau kondisi awal belum diperiksa.
 - Gunakan helper pihak ketiga hanya jika benar-benar diperlukan, sudah ditinjau, dan memiliki hasil yang dapat diverifikasi.
+- Sebelum menyelidiki atau memperbaiki bug, baca `.agents/skills/systematic-debugging/SKILL.md` dan referensi yang relevan. Jika pemanggilan skill melalui perintah slash tidak tersedia, baca file secara langsung; jangan menganggap skill otomatis aktif.
