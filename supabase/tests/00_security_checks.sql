@@ -16,7 +16,15 @@
 --     meniru isi token user yang login. Ketiganya SELALU di-set bersamaan
 --     (set_config(..., ..., true)) di setiap titik pergantian identitas, agar
 --     identitas satu bagian tidak terbawa ke bagian berikutnya.
---   - Hasil setiap cek berupa kolom `lulus` (true/false) atau pesan NOTICE.
+--   - Setiap cek boolean dibungkus `uji_assert.is_true(...)`. Fungsi itu
+--     MENCATAT hasilnya ke `uji_assert.results` (nomor tes, lulus/gagal, detail)
+--     lalu mengembalikan true/false. Kondisi false maupun NULL dicatat sebagai
+--     GAGAL tanpa melempar exception, sehingga skrip tetap mencapai ringkasan
+--     dan ROLLBACK; kegagalan tidak menghentikan transaksi.
+--   - Schema `uji_assert`, tabel hasil, dan fungsinya dibuat di dalam transaksi
+--     dan ikut hilang saat ROLLBACK. USAGE schema, EXECUTE fungsi, dan INSERT
+--     pada tabel hasil diberikan eksplisit ke anon dan authenticated supaya
+--     tetap bisa dipakai setelah `set local role`; hak dari PUBLIC dicabut.
 --
 -- Prasyarat:
 --   1. Migration 01–03 sudah diterapkan.
@@ -32,12 +40,16 @@
 -- (signed URL, unduh, upload) TIDAK dibuktikan di sini; uji lewat HTTP sesuai
 -- dokumen bagian 8.3.
 --
--- PENTING — SELESAI TANPA ERROR != SEMUA TES LULUS:
---   Sebagian pemeriksaan hanya mengembalikan kolom `lulus`. Baris dengan
---   lulus = false adalah KEGAGALAN yang tidak menghentikan skrip. Periksa
---   setiap baris hasil; jangan menyimpulkan apa pun dari pesan "Success".
---   Hanya pemeriksaan berbentuk DO yang berhenti dengan exception saat gagal.
---   Skrip ini belum memakai tabel hasil/pgTAP; lihat dokumen 8.1 untuk opsi.
+-- PENTING — SELESAI TANPA ERROR BUKAN BERARTI LULUS:
+--   Pemeriksaan boolean T1–T7, T13–T14, T18–T21, T26, dan T28–T36 memanggil
+--   uji_assert.is_true(kondisi, 'Txx', ...). Hasilnya — true, false, maupun
+--   NULL — dicatat ke uji_assert.results; false/NULL ditandai GAGAL tanpa
+--   melempar exception. Skrip karena itu TIDAK berhenti pada kegagalan
+--   assertion, dan selesainya skrip tanpa error TIDAK membuktikan semua tes
+--   lulus. Bukti kelulusan hanya blok RINGKASAN HASIL ASSERTION sebelum
+--   ROLLBACK: jumlah_gagal harus 0 dan daftar tes gagal harus "(tidak ada)".
+--   Pemeriksaan T8–T12, T15–T17, T22–T25, dan T27 tetap memakai blok DO dengan
+--   exception sebagai bagian dari pengujiannya.
 --
 -- Catatan: query sebagai `postgres` (pemilik tabel) MELEWATI RLS. Karena itu
 -- setiap cek akses selalu didahului `set local role ...`.
@@ -46,8 +58,73 @@
 begin;
 
 -- ---------------------------------------------------------------------------
--- 0. Konfigurasi fixture
+-- 0. Helper assertion dan konfigurasi fixture
 -- ---------------------------------------------------------------------------
+-- uji_assert.is_true() MENCATAT setiap pemeriksaan ke uji_assert.results dan
+-- mengembalikan true hanya bila kondisinya benar-benar TRUE. false dan NULL
+-- dicatat sebagai GAGAL, tetapi TIDAK melempar exception: kegagalan assertion
+-- bukan alasan menghentikan transaksi, karena skrip harus tetap sampai ke blok
+-- RINGKASAN HASIL ASSERTION (bagian 9) dan ke ROLLBACK.
+--
+-- Konsekuensinya: skrip yang selesai tanpa error SQL BELUM tentu lulus. Hanya
+-- ringkasan terakhir yang menentukan — `jumlah_gagal` harus 0.
+--
+-- Schema ini sengaja dibuat eksplisit (bukan pg_temp): setelah
+-- `set local role anon/authenticated`, schema sementara milik peran pemanggil
+-- awal tidak dapat dipakai peran lain pada sesi yang sama, sehingga tabel dan
+-- fungsi di pg_temp akan gagal dengan "permission denied for schema pg_temp_N".
+-- Schema, tabel, dan fungsi berada di dalam transaksi ini, jadi ikut terhapus
+-- oleh ROLLBACK.
+create schema if not exists uji_assert;
+
+-- Tabel hasil assertion. Tanpa serial/sequence: urutan insert tidak dipakai,
+-- dan ringkasan mengurutkan berdasarkan nomor tes. `lulus` tidak boleh NULL
+-- supaya hasil yang tidak jelas tidak bisa lolos sebagai "bukan gagal".
+create table if not exists uji_assert.results (
+  tes text not null,
+  lulus boolean not null,
+  detail text,
+  dicatat timestamptz not null default clock_timestamp()
+);
+
+-- SECURITY INVOKER (default, ditulis eksplisit): helper tidak perlu melewati
+-- RLS atau kepemilikan tabel mana pun, jadi tidak ada alasan memakai
+-- SECURITY DEFINER. Pemanggil hanya butuh INSERT ke tabel hasil.
+create or replace function uji_assert.is_true(
+  p_ok boolean,
+  p_tes text,
+  p_detail text default null
+) returns boolean
+language plpgsql
+security invoker
+as $$
+declare
+  lulus boolean := coalesce(p_ok, false);
+  detail text := coalesce(
+    p_detail,
+    case when p_ok is null then 'NULL' else p_ok::text end
+  );
+begin
+  insert into uji_assert.results (tes, lulus, detail)
+  values (p_tes, lulus, detail);
+
+  return lulus;
+end;
+$$;
+
+-- Least privilege: cabut hak bawaan PUBLIC lebih dulu (EXECUTE fungsi memang
+-- diberikan ke PUBLIC secara default), lalu beri hanya yang diperlukan.
+-- anon/authenticated cukup INSERT ke tabel hasil; SELECT tetap milik pemilik
+-- skrip karena ringkasan dijalankan setelah `reset role`.
+revoke all on schema uji_assert from public;
+revoke all on function uji_assert.is_true(boolean, text, text) from public;
+revoke all on uji_assert.results from public;
+
+grant usage on schema uji_assert to anon, authenticated;
+grant execute on function uji_assert.is_true(boolean, text, text) to anon, authenticated;
+grant insert on uji_assert.results to anon, authenticated;
+
+-- Konfigurasi fixture.
 select set_config('test.admin_email', 'admin-uji@example.com', true);
 
 -- ---------------------------------------------------------------------------
@@ -231,36 +308,42 @@ set local role anon;
 
 select 'T1' as tes,
        'anon hanya melihat 1 proyek uji berstatus published' as harapan,
-       count(*) = 1 as lulus,
+       uji_assert.is_true(count(*) = 1, 'T1', count(*)::text) as lulus,
        count(*) as hasil
 from public.projects
 where slug like 'uji-%';
 
 select 'T2' as tes,
        'anon tidak melihat proyek draft' as harapan,
-       count(*) = 0 as lulus,
+       uji_assert.is_true(count(*) = 0, 'T2', count(*)::text) as lulus,
        count(*) as hasil
 from public.projects
 where slug = 'uji-draft';
 
 select 'T3' as tes,
        'anon melihat 1 sertifikat terbit dan 0 draft' as harapan,
-       count(*) filter (where status = 'published') = 1
-         and count(*) filter (where status = 'draft') = 0 as lulus,
+       uji_assert.is_true(
+         count(*) filter (where status = 'published') = 1
+         and count(*) filter (where status = 'draft') = 0,
+         'T3', count(*)::text
+       ) as lulus,
        count(*) as hasil
 from public.certificates
 where title like 'Sertifikat Uji%';
 
 select 'T4' as tes,
        'anon hanya melihat entri pendidikan/pengalaman/tautan yang is_visible' as harapan,
-       (select count(*) from public.educations where institution like 'Institusi Uji%') = 1
-       and (select count(*) from public.experiences where organization like 'Organisasi Uji%') = 1
-       and (select count(*) from public.social_links where platform in ('GitHub', 'Dribbble')
-              and label = 'Uji') = 1 as lulus;
+       uji_assert.is_true(
+         (select count(*) from public.educations where institution like 'Institusi Uji%') = 1
+         and (select count(*) from public.experiences where organization like 'Organisasi Uji%') = 1
+         and (select count(*) from public.social_links where platform in ('GitHub', 'Dribbble')
+                and label = 'Uji') = 1,
+         'T4'
+       ) as lulus;
 
 select 'T5' as tes,
        'anon melihat 3 metadata media (sampul terbit, dokumen terbit, foto profil) dan tidak melihat 2 file draft' as harapan,
-       count(*) = 3 as lulus,
+       uji_assert.is_true(count(*) = 3, 'T5', count(*)::text) as lulus,
        count(*) as hasil
 from public.media_assets
 where object_path like any (array[
@@ -271,7 +354,7 @@ where object_path like any (array[
 
 select 'T6' as tes,
        'anon hanya melihat 3 metadata objek yang diunggah untuk konten terbit' as harapan,
-       count(*) = 3 as lulus,
+       uji_assert.is_true(count(*) = 3, 'T6', count(*)::text) as lulus,
        count(*) as hasil
 from storage.objects
 where bucket_id = 'media'
@@ -285,9 +368,12 @@ where bucket_id = 'media'
 
 select 'T7' as tes,
        'fungsi is_public_media: file terbit true, file draft false' as harapan,
-       private.is_public_media('media', 'projects/uji-terbit/cover.webp') = true
-       and private.is_public_media('media', 'projects/uji-draft/galeri.webp') = false
-       and private.is_public_media('media', 'certificates/uji-draft/dokumen.pdf') = false as lulus;
+       uji_assert.is_true(
+         private.is_public_media('media', 'projects/uji-terbit/cover.webp') = true
+         and private.is_public_media('media', 'projects/uji-draft/galeri.webp') = false
+         and private.is_public_media('media', 'certificates/uji-draft/dokumen.pdf') = false,
+         'T7'
+       ) as lulus;
 
 -- T8: anon tidak boleh Insert.
 do $$
@@ -369,14 +455,14 @@ set local role authenticated;
 
 select 'T13' as tes,
        'non-admin hanya melihat 1 proyek terbit (sama seperti anon)' as harapan,
-       count(*) = 1 as lulus,
+       uji_assert.is_true(count(*) = 1, 'T13', count(*)::text) as lulus,
        count(*) as hasil
 from public.projects
 where slug like 'uji-%';
 
 select 'T14' as tes,
        'non-admin tidak melihat baris admin_users selain miliknya' as harapan,
-       count(*) = 0 as lulus,
+       uji_assert.is_true(count(*) = 0, 'T14', count(*)::text) as lulus,
        count(*) as hasil
 from public.admin_users;
 
@@ -443,14 +529,14 @@ set local role authenticated;
 
 select 'T18' as tes,
        'admin melihat proyek terbit dan draft (2 proyek uji)' as harapan,
-       count(*) = 2 as lulus,
+       uji_assert.is_true(count(*) = 2, 'T18', count(*)::text) as lulus,
        count(*) as hasil
 from public.projects
 where slug like 'uji-%';
 
 select 'T19' as tes,
        'admin melihat baris admin_users miliknya sendiri' as harapan,
-       count(*) = 1 as lulus,
+       uji_assert.is_true(count(*) = 1, 'T19', count(*)::text) as lulus,
        count(*) as hasil
 from public.admin_users;
 
@@ -464,7 +550,10 @@ values (
 
 select 'T20' as tes,
        'admin dapat INSERT proyek dan published_at terisi otomatis' as harapan,
-       count(*) = 1 and bool_and(published_at is not null) as lulus,
+       uji_assert.is_true(
+         count(*) = 1 and bool_and(published_at is not null),
+         'T20', count(*)::text
+       ) as lulus,
        count(*) as hasil
 from public.projects
 where slug = 'uji-admin-baru';
@@ -476,7 +565,7 @@ where slug = 'uji-admin-baru';
 
 select 'T21' as tes,
        'admin dapat UPDATE proyek' as harapan,
-       count(*) = 1 as lulus,
+       uji_assert.is_true(count(*) = 1, 'T21', count(*)::text) as lulus,
        count(*) as hasil
 from public.projects
 where slug = 'uji-admin-baru' and title = 'Proyek Baru Admin (diubah)';
@@ -533,7 +622,7 @@ $$;
 delete from public.projects where slug = 'uji-admin-baru';
 select 'T26' as tes,
        'admin dapat DELETE proyek' as harapan,
-       count(*) = 0 as lulus,
+       uji_assert.is_true(count(*) = 0, 'T26', count(*)::text) as lulus,
        count(*) as hasil
 from public.projects
 where slug = 'uji-admin-baru';
@@ -561,7 +650,7 @@ set local role anon;
 
 select 'T28' as tes,
        'setelah proyek ditarik ke draft, metadata objek Storage sampul tidak terlihat anon' as harapan,
-       count(*) = 0 as lulus,
+       uji_assert.is_true(count(*) = 0, 'T28', count(*)::text) as lulus,
        count(*) as hasil
 from storage.objects
 where bucket_id = 'media'
@@ -569,7 +658,10 @@ where bucket_id = 'media'
 
 select 'T29' as tes,
        'is_public_media(sampul) menjadi false setelah ditarik ke draft' as harapan,
-       private.is_public_media('media', 'projects/uji-terbit/cover.webp') = false as lulus;
+       uji_assert.is_true(
+         private.is_public_media('media', 'projects/uji-terbit/cover.webp') = false,
+         'T29'
+       ) as lulus;
 
 reset role;
 
@@ -583,7 +675,7 @@ set local role anon;
 
 select 'T30' as tes,
        'setelah diterbitkan kembali, metadata objek Storage sampul terlihat anon lagi' as harapan,
-       count(*) = 1 as lulus,
+       uji_assert.is_true(count(*) = 1, 'T30', count(*)::text) as lulus,
        count(*) as hasil
 from storage.objects
 where bucket_id = 'media'
@@ -595,9 +687,12 @@ reset role;
 update public.projects set status = 'published' where slug = 'uji-draft';
 select 'T31' as tes,
        'menerbitkan draft mengisi published_at' as harapan,
-       published_at is not null as lulus
-from public.projects
-where slug = 'uji-draft';
+       uji_assert.is_true(
+         (select published_at is not null
+            from public.projects
+           where slug = 'uji-draft'),
+         'T31'
+       ) as lulus;
 
 -- ===========================================================================
 -- 7. AUDIT GRANTS DAN STATUS RLS (sebagai pemilik tabel)
@@ -605,30 +700,39 @@ where slug = 'uji-draft';
 
 select 'T32' as tes,
        'grant minimum: anon SELECT saja, tanpa akses admin_users' as harapan,
-       has_table_privilege('anon', 'public.projects', 'SELECT') = true
-       and has_table_privilege('anon', 'public.projects', 'INSERT') = false
-       and has_table_privilege('anon', 'public.projects', 'UPDATE') = false
-       and has_table_privilege('anon', 'public.projects', 'DELETE') = false
-       and has_table_privilege('anon', 'public.admin_users', 'SELECT') = false as lulus;
+       uji_assert.is_true(
+         has_table_privilege('anon', 'public.projects', 'SELECT') = true
+         and has_table_privilege('anon', 'public.projects', 'INSERT') = false
+         and has_table_privilege('anon', 'public.projects', 'UPDATE') = false
+         and has_table_privilege('anon', 'public.projects', 'DELETE') = false
+         and has_table_privilege('anon', 'public.admin_users', 'SELECT') = false,
+         'T32'
+       ) as lulus;
 
 select 'T33' as tes,
        'authenticated punya grant tulis, tetapi tetap dibatasi RLS' as harapan,
-       has_table_privilege('authenticated', 'public.projects', 'INSERT') = true
-       and has_function_privilege('anon', 'private.is_admin()', 'EXECUTE') = false
-       and has_function_privilege('anon', 'private.is_public_media(text,text)', 'EXECUTE') = true as lulus;
+       uji_assert.is_true(
+         has_table_privilege('authenticated', 'public.projects', 'INSERT') = true
+         and has_function_privilege('anon', 'private.is_admin()', 'EXECUTE') = false
+         and has_function_privilege('anon', 'private.is_public_media(text,text)', 'EXECUTE') = true,
+         'T33'
+       ) as lulus;
 
 select 'T34' as tes,
        'RLS aktif pada semua tabel aplikasi' as harapan,
-       (select count(*) = 8
-          from pg_class c
-          join pg_namespace n on n.oid = c.relnamespace
-         where n.nspname = 'public'
-           and c.relkind = 'r'
-           and c.relrowsecurity
-           and c.relname in (
-             'site_profile', 'projects', 'certificates', 'educations',
-             'experiences', 'social_links', 'media_assets', 'admin_users'
-           )) as lulus;
+       uji_assert.is_true(
+         (select count(*) = 8
+            from pg_class c
+            join pg_namespace n on n.oid = c.relnamespace
+           where n.nspname = 'public'
+             and c.relkind = 'r'
+             and c.relrowsecurity
+             and c.relname in (
+               'site_profile', 'projects', 'certificates', 'educations',
+               'experiences', 'social_links', 'media_assets', 'admin_users'
+             )),
+         'T34'
+       ) as lulus;
 
 -- ===========================================================================
 -- 8. KONSISTENSI METADATA <-> OBJEK STORAGE (sebagai admin)
@@ -648,7 +752,7 @@ set local role authenticated;
 
 select 'T35' as tes,
        'setiap metadata media uji punya objek Storage pasangannya' as harapan,
-       count(*) = 0 as lulus,
+       uji_assert.is_true(count(*) = 0, 'T35', count(*)::text) as lulus,
        count(*) as jumlah_tanpa_file
 from public.media_assets ma
 left join storage.objects o
@@ -665,7 +769,7 @@ where ma.bucket_id = 'media'
 
 select 'T36' as tes,
        'setiap objek Storage uji punya baris media_assets (tidak ada file yatim)' as harapan,
-       count(*) = 0 as lulus,
+       uji_assert.is_true(count(*) = 0, 'T36', count(*)::text) as lulus,
        count(*) as jumlah_yatim
 from storage.objects o
 left join public.media_assets ma
@@ -679,6 +783,72 @@ where o.bucket_id = 'media'
   and ma.id is null;
 
 reset role;
+
+-- ===========================================================================
+-- 9. RINGKASAN HASIL ASSERTION (keluaran terakhir sebelum ROLLBACK)
+-- ===========================================================================
+-- Dijalankan sebagai pemilik tabel (setelah `reset role`) karena anon dan
+-- authenticated sengaja tidak diberi SELECT pada uji_assert.results.
+--
+-- Baris pertama adalah ringkasan; baris berikutnya satu baris per tes.
+-- Kelulusan HANYA dinilai dari sini: baris RINGKASAN harus lulus = true dan
+-- detailnya harus memuat "gagal: 0" serta "tes gagal: (tidak ada)".
+-- Assertion yang gagal tidak memunculkan error apa pun, jadi jangan menyimpulkan
+-- lulus dari pesan "Success" SQL Editor.
+--
+-- Catatan SQL Editor: `rollback;` di bawah blok ini tidak mengembalikan baris.
+-- Bila panel hasil hanya menampilkan "Success" untuk rollback, buka hasil query
+-- terakhir sebelum rollback (grid RINGKASAN) untuk membaca angkanya.
+
+with hasil as (
+  select
+    tes,
+    lulus,
+    detail,
+    substring(tes from '[0-9]+')::int as nomor
+  from uji_assert.results
+),
+ringkasan as (
+  select
+    count(*) as jumlah_assertion,
+    count(*) filter (where lulus) as jumlah_lulus,
+    count(*) filter (where not lulus) as jumlah_gagal,
+    coalesce(
+      string_agg(tes, ', ' order by nomor) filter (where not lulus),
+      '(tidak ada)'
+    ) as daftar_gagal
+  from hasil
+)
+select
+  0 as nomor,
+  'RINGKASAN'::text as tes,
+  (
+    jumlah_assertion = 23
+    AND jumlah_lulus = 23
+    AND jumlah_gagal = 0
+  ) AS lulus,
+  format(
+    '%s | assertion: %s | lulus: %s | gagal: %s | tes gagal: %s',
+    CASE
+      WHEN jumlah_assertion = 23
+       AND jumlah_lulus = 23
+       AND jumlah_gagal = 0
+      THEN 'SEMUA 23 ASSERTION LULUS'
+      ELSE 'ASSERTION GAGAL ATAU TIDAK LENGKAP - JANGAN ANGGAP LULUS'
+    END,
+    jumlah_assertion,
+    jumlah_lulus,
+    jumlah_gagal,
+    daftar_gagal
+  ) as detail
+from ringkasan
+
+union all
+
+select nomor, tes, lulus, detail
+from hasil
+
+order by nomor, tes;
 
 rollback;
 
@@ -695,9 +865,16 @@ rollback;
 -- T35–T36 : konsistensi metadata media_assets dengan objek Storage.
 --
 -- Cara membaca:
---   - Selesai tanpa error SQL hanya berarti skrip berhasil dijalankan.
---   - Baris dengan lulus=false adalah kegagalan; periksa semuanya.
---   - NOTICE ... LULUS = lulus; raise exception ... GAGAL = skrip berhenti.
+--   - SELESAI TANPA ERROR SQL BUKAN BUKTI LULUS. Assertion yang gagal dicatat
+--     di uji_assert.results dan skrip berlanjut sampai ROLLBACK, jadi tidak ada
+--     error yang muncul.
+--   - Bukti kelulusan hanya blok RINGKASAN HASIL ASSERTION (query terakhir):
+--     baris `RINGKASAN` harus lulus = true, dengan "gagal: 0" dan
+--     "tes gagal: (tidak ada)".
+--   - Kolom `lulus` pada SELECT per tes boleh bernilai false; itu kegagalan yang
+--     sudah tercatat di uji_assert.results dan diulang di ringkasan.
+--   - NOTICE ... LULUS = blok DO menguji exception dan lolos; raise exception
+--     ... GAGAL = skrip berhenti sebelum ringkasan (tidak ada hasil ringkasan).
 --
 -- Yang TIDAK diuji skrip ini:
 --   - Bahwa file benar-benar dapat/tidak dapat diunduh. T6/T28/T30/T35/T36
